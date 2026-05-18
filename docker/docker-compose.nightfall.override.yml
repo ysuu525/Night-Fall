@@ -1,0 +1,15 @@
+# Night Fall compose override for Ombre Brain's docker-compose.user.yml.
+# Usage from the folder that contains Ombre's docker-compose.user.yml:
+#   docker compose -f docker-compose.user.yml -f ../Night-Fall/docker/docker-compose.nightfall.override.yml up -d
+#
+# This does not pull or build a second Ombre image. It reuses the existing
+# ombre-brain service and starts the same server through Night Fall's launcher.
+
+services:
+  ombre-brain:
+    environment:
+      - OMBRE_HOME=/app
+      - NIGHT_FALL_DATA_DIR=/data/night_fall
+    volumes:
+      - ../Night-Fall:/extensions/night-fall:ro
+    command: python /extensions/night-fall/night_fall/launcher.py
