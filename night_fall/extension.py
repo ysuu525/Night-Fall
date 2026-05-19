@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .config import NightFallConfig
-from .tool import night_fall_tool
+from .tool import get_surfaceable_dream, night_fall_tool
 
 
 _NIGHT_FALL_DOC = """Night Fall latent dream lifecycle.
@@ -9,9 +9,9 @@ _NIGHT_FALL_DOC = """Night Fall latent dream lifecycle.
 Actions:
 - generate: Create a new latent dream from emotional Ombre memories. Typically
   called at session end or low-activity moments.
-- surface: Check whether any latent dream resonates with the current moment.
-  Should be called RIGHT AFTER breath, with the same query/valence/arousal
-  passed through. Returns at most one surfaced dream, in a dedicated section
+- surface: Manual / debugging entry point. Normal dream surfacing happens
+  automatically inside breath (v1) — Claude does not need to call this in the
+  regular flow. Returns at most one surfaced dream, in a dedicated section
   prefixed by "=== 浮上来的梦 ===".
 - status: Report counts of pending / surfaced / deleted dreams.
 - cleanup: Remove dreams that have been considered but not picked
@@ -76,4 +76,9 @@ def register_night_fall(ombre_server, cfg: NightFallConfig) -> None:
         )
 
     night_fall.__doc__ = _NIGHT_FALL_DOC
+
+    async def _auto_surface() -> str | None:
+        return await get_surfaceable_dream(ombre_server, cfg)
+
+    ombre_server._night_fall_auto_surface = _auto_surface
     ombre_server._night_fall_registered = True

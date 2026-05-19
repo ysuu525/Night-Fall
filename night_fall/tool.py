@@ -224,3 +224,21 @@ async def night_fall_tool(
             f"debug recall_cues: {len(recall_cues)}"
         )
     return "Night Fall complete: 1 latent dream formed.\nIt has not surfaced."
+
+
+async def get_surfaceable_dream(ombre_server, cfg: NightFallConfig) -> str | None:
+    """v1 auto-surface: pick the newest pending dream past the latency window,
+    mark it surfaced, and return the formatted text block. Returns None when
+    no dream is eligible. Called directly by Ombre's breath; not an MCP tool.
+    """
+    store = _storage(cfg)
+    adapter = OmbreAdapter(ombre_server)
+    now = now_utc()
+    pending = [
+        r for r in store.list()
+        if not r.surfaced and age_hours(r, now) >= cfg.min_surface_age_hours
+    ]
+    if not pending:
+        return None
+    pending.sort(key=lambda r: r.generated_at, reverse=True)
+    return _emit_and_destroy(store, adapter, pending[0], spontaneous=False)
