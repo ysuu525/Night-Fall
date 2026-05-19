@@ -59,13 +59,14 @@ def test_imagery_extraction_fails_with_fewer_than_two_valid_fragments():
         asyncio.run(extract_imagery(Adapter(response), _buckets()))
 
 
-def test_writer_parses_final_core_affect():
+def test_writer_parses_final_core_affect_and_cues():
     response = {
         "dream_text": "I stood in the hallway while rain came through the lock.",
         "core_affect": {"valence": 0.22, "arousal": 0.74},
+        "recall_cues": ["独自归家的迟疑", "熟悉空间忽然陌生", "湿润季节的傍晚"],
     }
 
-    dream_text, affect = asyncio.run(write_dream(
+    dream_text, affect, cues = asyncio.run(write_dream(
         Adapter(response),
         _buckets(),
         [{"source_bucket_id": "bucket_a", "excerpt": "hallway was full of rain"}],
@@ -74,6 +75,7 @@ def test_writer_parses_final_core_affect():
 
     assert dream_text.startswith("I stood")
     assert affect == {"valence": 0.22, "arousal": 0.74}
+    assert cues == ["独自归家的迟疑", "熟悉空间忽然陌生", "湿润季节的傍晚"]
 
 
 def test_residual_prompt_is_distinct_from_integrative():
@@ -91,3 +93,4 @@ def test_residual_prompt_is_distinct_from_integrative():
     assert "integrative" in prompt
     assert "trivial" not in prompt
     assert "core_affect" in prompt
+    assert "recall_cues" in prompt

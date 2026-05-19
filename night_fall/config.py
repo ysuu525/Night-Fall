@@ -14,9 +14,10 @@ class NightFallConfig:
     ombre_home: Path | None
     data_dir: Path
     min_surface_age_hours: float = 3.0
-    spontaneous_after_hours: float = 24.0
-    surface_threshold: float = 0.82
-    spontaneous_chance: float = 0.02
+    surface_threshold: float = 0.62
+    attempt_threshold: float = 0.45
+    alpha_subordinate: float = 0.25
+    spontaneous_surface_prob: float = 0.02
     selection_limit: int = 5
 
     @property
@@ -107,6 +108,9 @@ def load_config(require_ombre: bool = True) -> NightFallConfig:
             "python scripts/install_local.py."
         )
 
+    legacy_spontaneous = float(raw.get("spontaneous_chance", 0.02))
+    spontaneous_default = float(raw.get("spontaneous_surface_prob", legacy_spontaneous))
+
     cfg = NightFallConfig(
         repo_root=repo_root(),
         ombre_home=ombre_home,
@@ -115,20 +119,29 @@ def load_config(require_ombre: bool = True) -> NightFallConfig:
             "NIGHT_FALL_MIN_SURFACE_AGE_HOURS",
             float(raw.get("min_surface_age_hours", 3.0)),
         ),
-        spontaneous_after_hours=_float_env(
-            "NIGHT_FALL_SPONTANEOUS_AFTER_HOURS",
-            float(raw.get("spontaneous_after_hours", 24.0)),
-        ),
         surface_threshold=_float_env(
             "NIGHT_FALL_SURFACE_THRESHOLD",
-            float(raw.get("surface_threshold", 0.82)),
+            float(raw.get("surface_threshold", 0.62)),
         ),
-        spontaneous_chance=_float_env(
-            "NIGHT_FALL_SPONTANEOUS_CHANCE",
-            float(raw.get("spontaneous_chance", 0.02)),
+        attempt_threshold=_float_env(
+            "NIGHT_FALL_ATTEMPT_THRESHOLD",
+            float(raw.get("attempt_threshold", 0.45)),
+        ),
+        alpha_subordinate=_float_env(
+            "NIGHT_FALL_ALPHA_SUBORDINATE",
+            float(raw.get("alpha_subordinate", 0.25)),
+        ),
+        spontaneous_surface_prob=_float_env(
+            "NIGHT_FALL_SPONTANEOUS_SURFACE_PROB",
+            _float_env("NIGHT_FALL_SPONTANEOUS_CHANCE", spontaneous_default),
         ),
         selection_limit=_int_env("NIGHT_FALL_SELECTION_LIMIT", int(raw.get("selection_limit", 5))),
     )
+    if cfg.attempt_threshold >= cfg.surface_threshold:
+        raise ValueError(
+            f"attempt_threshold ({cfg.attempt_threshold}) must be strictly less than "
+            f"surface_threshold ({cfg.surface_threshold})."
+        )
     cfg.dreams_dir.mkdir(parents=True, exist_ok=True)
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     return cfg

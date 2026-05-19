@@ -17,6 +17,7 @@ REQUIRED_METADATA_FIELDS = {
     "surfaced_at",
     "spontaneous",
     "surface_attempts",
+    "recall_cues",
 }
 FORBIDDEN_METADATA_FIELDS = {
     "deletion_scheduled_at",
@@ -65,6 +66,9 @@ def choose_dream_mode() -> str:
 
 
 def validate_metadata(metadata: dict) -> None:
+    # Soft-compat for v1 dreams: backfill recall_cues=[] if missing before required-field check
+    if "recall_cues" not in metadata:
+        metadata["recall_cues"] = []
     missing = REQUIRED_METADATA_FIELDS - set(metadata)
     if missing:
         raise ValueError(f"Dream metadata missing fields: {sorted(missing)}")
@@ -84,3 +88,11 @@ def validate_metadata(metadata: dict) -> None:
             raise ValueError("imagery_fragments items must be mappings")
         if not item.get("source_bucket_id") or not item.get("excerpt"):
             raise ValueError("imagery_fragments must include source_bucket_id and excerpt")
+    cues = metadata.get("recall_cues")
+    if not isinstance(cues, list):
+        raise ValueError("recall_cues must be a list of strings")
+    if len(cues) > 5:
+        raise ValueError("recall_cues must have at most 5 entries")
+    for cue in cues:
+        if not isinstance(cue, str) or not cue.strip():
+            raise ValueError("recall_cues entries must be non-empty strings")

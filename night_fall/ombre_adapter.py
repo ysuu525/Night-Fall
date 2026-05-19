@@ -23,6 +23,10 @@ class OmbreAdapter:
     def dehydrator(self) -> Any:
         return getattr(self.ombre_server, "dehydrator", None)
 
+    @property
+    def embedding_engine(self) -> Any:
+        return getattr(self.ombre_server, "embedding_engine", None)
+
     async def list_candidate_buckets(self) -> list[dict]:
         bucket_mgr = getattr(self.ombre_server, "bucket_mgr", None)
         if bucket_mgr is None:

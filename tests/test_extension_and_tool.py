@@ -134,6 +134,11 @@ class FakeServer:
                     {
                         "dream_text": "I stood in a hallway while cold light gathered around a stopped clock.",
                         "core_affect": {"valence": 0.21, "arousal": 0.77},
+                        "recall_cues": [
+                            "独自归家的迟疑",
+                            "熟悉空间忽然陌生",
+                            "湿润季节的傍晚",
+                        ],
                     }
                 ),
             ],

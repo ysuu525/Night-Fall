@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import timedelta
 
 from night_fall.config import NightFallConfig
 from night_fall.metadata import now_utc, new_dream_id
 from night_fall.storage import DreamStorage
-from night_fall.surfacing import choose_surface_candidate
 from night_fall.tool import night_fall_tool
 
 
@@ -15,8 +15,8 @@ def _cfg(tmp_path, **kwargs) -> NightFallConfig:
     return replace(base, **kwargs)
 
 
-def _metadata(generated_at: str) -> dict:
-    return {
+def _metadata(generated_at: str, **overrides) -> dict:
+    meta = {
         "dream_id": new_dream_id(),
         "generated_at": generated_at,
         "dream_mode": "fragmentary",
@@ -29,166 +29,102 @@ def _metadata(generated_at: str) -> dict:
         "surfaced_at": None,
         "spontaneous": None,
         "surface_attempts": 0,
+        "recall_cues": ["独自归家的迟疑", "湿润季节的傍晚"],
     }
+    meta.update(overrides)
+    return meta
 
 
-def test_dream_cannot_surface_before_three_hours(tmp_path):
+class _Server:
+    """Bare server stub — no embedding engine, no LLM. Surface flows that only
+    exercise the affect channel work fine without these."""
+
+    def __init__(self):
+        self.embedding_engine = None
+
+
+def _surface(tmp_path, **kwargs) -> str:
+    cfg = _cfg(tmp_path)
+    return asyncio.run(night_fall_tool(_Server(), cfg, action="surface", **kwargs))
+
+
+def test_dream_cannot_surface_before_min_surface_age(tmp_path):
     storage = DreamStorage(tmp_path / "dreams", tmp_path / "logs")
     now = now_utc()
     storage.write(_metadata((now - timedelta(hours=2, minutes=59)).isoformat()), "dream")
 
-    eligible, candidate, spontaneous = choose_surface_candidate(
-        storage.list(),
-        _cfg(tmp_path),
-        now,
-        current_valence=0.30,
-        current_arousal=0.60,
-        current_motifs="red door rain",
-    )
+    response = _surface(tmp_path, current_valence=0.30, current_arousal=0.60)
 
-    assert candidate is None
-    assert spontaneous is False
-    assert eligible == []
+    # The dream is still under the latency floor — nothing should surface and
+    # the dream must still exist on disk.
+    assert response == "No latent dream surfaced."
+    assert len(list((tmp_path / "dreams").glob("dream_*.md"))) == 1
 
 
-def test_affect_resonance_can_surface_after_three_hours(tmp_path):
+def test_affect_channel_alone_can_surface(tmp_path):
     storage = DreamStorage(tmp_path / "dreams", tmp_path / "logs")
     now = now_utc()
     storage.write(_metadata((now - timedelta(hours=4)).isoformat()), "dream")
 
-    eligible, candidate, spontaneous = choose_surface_candidate(
-        storage.list(),
-        _cfg(tmp_path),
-        now,
-        current_valence=0.32,
-        current_arousal=0.62,
-        current_motifs="red door",
-    )
+    response = _surface(tmp_path, current_valence=0.31, current_arousal=0.61)
 
-    assert candidate is not None
-    assert spontaneous is False
-    assert len(eligible) == 1
+    # Single-channel affect resonance is enough under the max+α*min rule.
+    assert "=== 浮上来的梦 ===" in response
+    assert "spontaneous: false" in response
 
 
-def test_missing_current_affect_does_not_surface_before_spontaneous_window(tmp_path):
+def test_ineligible_breath_does_nothing(tmp_path):
     storage = DreamStorage(tmp_path / "dreams", tmp_path / "logs")
     now = now_utc()
-    storage.write(_metadata((now - timedelta(hours=6)).isoformat()), "dream")
+    record = storage.write(_metadata((now - timedelta(hours=6)).isoformat()), "dream")
 
-    eligible, candidate, spontaneous = choose_surface_candidate(
-        storage.list(),
-        _cfg(tmp_path),
-        now,
-        current_valence=-1,
-        current_arousal=-1,
-        current_motifs="red door",
-    )
+    response = _surface(tmp_path)  # no query, no affect, not session_start
 
-    assert candidate is None
-    assert spontaneous is False
-    assert len(eligible) == 1
+    assert response.startswith("Breath not contextual")
+    refreshed = storage.read(record.path)
+    assert refreshed.metadata["surface_attempts"] == 0
 
 
-def test_spontaneous_surface_after_24h_is_testable(tmp_path, monkeypatch):
+def test_session_start_eligible_even_without_query_or_affect(tmp_path):
+    """is_session_start=true makes a no-arg breath eligible; without resonance
+    the dream still does not surface, but eligibility was passed."""
     storage = DreamStorage(tmp_path / "dreams", tmp_path / "logs")
     now = now_utc()
-    storage.write(_metadata((now - timedelta(hours=25)).isoformat()), "dream")
-    monkeypatch.setattr("night_fall.surfacing.random.random", lambda: 0.0)
+    storage.write(_metadata((now - timedelta(hours=4)).isoformat()), "dream")
 
-    eligible, candidate, spontaneous = choose_surface_candidate(
-        storage.list(),
-        _cfg(tmp_path, spontaneous_chance=0.02),
-        now,
-        current_valence=-1,
-        current_arousal=-1,
-        current_motifs="",
-    )
+    response = _surface(tmp_path, is_session_start=True)
 
-    assert candidate is not None
-    assert spontaneous is True
+    assert response != "Breath not contextual — no dream surfacing this turn."
 
 
-def test_surface_action_updates_metadata(tmp_path):
+def test_spontaneous_surface_under_low_random(tmp_path, monkeypatch):
     storage = DreamStorage(tmp_path / "dreams", tmp_path / "logs")
     now = now_utc()
-    record = storage.write(_metadata((now - timedelta(hours=4)).isoformat()), "I saw the door.")
+    storage.write(_metadata((now - timedelta(hours=10)).isoformat()), "dream")
+    # Force spontaneous to fire and force affect to miss the surface threshold.
+    monkeypatch.setattr("night_fall.tool.random.random", lambda: 0.0)
 
-    response = __import__("asyncio").run(
-        night_fall_tool(
-            ombre_server=object(),
-            cfg=_cfg(tmp_path),
-            action="surface",
-            current_valence=0.30,
-            current_arousal=0.60,
-        )
-    )
+    response = _surface(tmp_path, is_session_start=True)
 
-    surfaced = storage.read(record.path)
-    assert "A dream surfaced." in response
-    assert "source_bucket_ids" not in response
-    assert surfaced.metadata["surfaced"] is True
-    assert surfaced.metadata["spontaneous"] is False
-    assert surfaced.metadata["surfaced_at"]
-    assert surfaced.metadata["surface_attempts"] >= 1
+    assert "=== 浮上来的梦 ===" in response
+    assert "spontaneous: true" in response
 
 
-def test_surface_with_no_dreams_returns_nothing_surfaced(tmp_path):
-    response = __import__("asyncio").run(
-        night_fall_tool(
-            ombre_server=object(),
-            cfg=_cfg(tmp_path),
-            action="surface",
-            current_valence=0.30,
-            current_arousal=0.60,
-        )
-    )
-
-    assert response == "No latent dream surfaced."
-
-
-def test_already_surfaced_dream_is_not_selected_again(tmp_path):
+def test_already_surfaced_dreams_filtered_out(tmp_path):
+    """If a dream metadata says surfaced=true (shouldn't normally happen after
+    v2 destruction, but possible during migration), it must not resurface."""
     storage = DreamStorage(tmp_path / "dreams", tmp_path / "logs")
     now = now_utc()
     meta = _metadata((now - timedelta(hours=4)).isoformat())
     meta["surfaced"] = True
     meta["surfaced_at"] = now.isoformat()
-    storage.write(meta, "Already surfaced dream.")
+    storage.write(meta, "Already surfaced.")
 
-    eligible, candidate, spontaneous = choose_surface_candidate(
-        storage.list(),
-        _cfg(tmp_path),
-        now,
-        current_valence=0.30,
-        current_arousal=0.60,
-        current_motifs="",
-    )
+    response = _surface(tmp_path, current_valence=0.30, current_arousal=0.60)
 
-    assert candidate is None
-    assert eligible == []
+    assert response == "No latent dream surfaced."
 
 
-def test_surface_attempts_incremented_for_all_evaluated_dreams(tmp_path):
-    storage = DreamStorage(tmp_path / "dreams", tmp_path / "logs")
-    now = now_utc()
-    # Resonant dream (will be selected)
-    meta_a = _metadata((now - timedelta(hours=4)).isoformat())
-    record_a = storage.write(meta_a, "Dream A")
-    # Non-resonant dream (evaluated but not selected)
-    meta_b = _metadata((now - timedelta(hours=5)).isoformat())
-    meta_b["core_affect"] = {"valence": 0.01, "arousal": 0.01}
-    record_b = storage.write(meta_b, "Dream B")
-
-    __import__("asyncio").run(
-        night_fall_tool(
-            ombre_server=object(),
-            cfg=_cfg(tmp_path),
-            action="surface",
-            current_valence=0.30,
-            current_arousal=0.60,
-        )
-    )
-
-    a = storage.read(record_a.path)
-    b = storage.read(record_b.path)
-    assert a.metadata["surface_attempts"] == 1
-    assert b.metadata["surface_attempts"] == 1
+def test_surface_with_no_dreams_returns_nothing(tmp_path):
+    response = _surface(tmp_path, current_valence=0.30, current_arousal=0.60)
+    assert response == "No latent dream surfaced."

@@ -22,6 +22,7 @@ def _metadata(generated_at: str) -> dict:
         "surfaced_at": None,
         "spontaneous": None,
         "surface_attempts": 0,
+        "recall_cues": ["独自归家的迟疑", "湿润季节的傍晚"],
     }
 
 

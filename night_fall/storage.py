@@ -102,14 +102,16 @@ class DreamStorage:
     def status(self, now: datetime) -> dict:
         records = self.list()
         pending = [r for r in records if not r.surfaced]
-        surfaced = [r for r in records if r.surfaced]
-        deleted = self.count_deleted_events()
+        # Surfaced dreams are destroyed immediately on surface (spec section 6),
+        # so the live count must come from the event log, not the filesystem.
+        surfaced = self.count_event("surfaced")
+        deleted = self.count_event("deleted")
         oldest_age = None
         if pending:
             oldest_age = max((now - r.generated_at).total_seconds() / 3600 for r in pending)
         return {
             "pending": len(pending),
-            "surfaced": len(surfaced),
+            "surfaced": surfaced,
             "deleted": deleted,
             "oldest_pending_age_hours": oldest_age,
         }
@@ -119,18 +121,21 @@ class DreamStorage:
         with (self.logs_dir / "events.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
 
-    def count_deleted_events(self) -> int:
+    def count_event(self, event_name: str) -> int:
         path = self.logs_dir / "events.jsonl"
         if not path.exists():
             return 0
         count = 0
         for line in path.read_text(encoding="utf-8").splitlines():
             try:
-                if json.loads(line).get("event") == "deleted":
+                if json.loads(line).get("event") == event_name:
                     count += 1
             except json.JSONDecodeError:
                 continue
         return count
+
+    def count_deleted_events(self) -> int:
+        return self.count_event("deleted")
 
     @staticmethod
     def _split_frontmatter(text: str) -> tuple[dict, str]:

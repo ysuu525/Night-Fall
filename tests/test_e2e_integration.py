@@ -194,6 +194,11 @@ def _llm_responses() -> list[str]:
         json.dumps({
             "dream_text": "水漫过走廊，红门纹丝不动。停止的钟表下，她的声音像冷光透进来。",
             "core_affect": {"valence": 0.28, "arousal": 0.72},
+            "recall_cues": [
+                "独自归家的迟疑",
+                "熟悉空间忽然陌生",
+                "湿润季节的傍晚",
+            ],
         }),
     ]
 
@@ -239,15 +244,17 @@ def test_full_dream_pipeline(tmp_path, monkeypatch):
     surface_result = asyncio.run(
         night_fall_tool(server, cfg, action="surface", current_valence=0.3, current_arousal=0.7)
     )
-    assert "A dream surfaced." in surface_result
+    assert "=== 浮上来的梦 ===" in surface_result
     assert "水漫过走廊" in surface_result
+    assert "spontaneous: false" in surface_result
     assert "source_bucket_ids" not in surface_result
 
-    # 6. dream file marked as surfaced on disk
-    refreshed = storage.read(dream_files[0])
-    assert refreshed.metadata["surfaced"] is True
-    assert refreshed.metadata["surfaced_at"] is not None
-    assert refreshed.metadata["spontaneous"] is False
+    # 6. v2 lifecycle: surfaced dream is physically destroyed (one-shot).
+    # The .md file must be gone and the event log must record the surfacing.
+    assert list((tmp_path / "dreams").glob("dream_*.md")) == []
+    events_file = (tmp_path / "logs" / "events.jsonl").read_text(encoding="utf-8")
+    assert "surfaced_one_shot" in events_file
+    assert '"event": "surfaced"' in events_file
 
 
 def test_surface_blocked_before_three_hours(tmp_path, monkeypatch):
