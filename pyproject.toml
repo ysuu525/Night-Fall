@@ -5,9 +5,6 @@ description = "Runtime Night Fall extension for a user-provided Ombre Brain inst
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [
-  { name = "Shuhui Yang", email = "u7662582@anu.edu.au" },
-]
 keywords = ["mcp", "ombre-brain", "memory", "dream", "claude"]
 classifiers = [
   "License :: OSI Approved :: MIT License",
@@ -22,8 +19,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/shuhuiyang/Night-Fall"
-Issues = "https://github.com/shuhuiyang/Night-Fall/issues"
+Homepage = "https://github.com/ysuu525/Night-Fall"
+Issues = "https://github.com/ysuu525/Night-Fall/issues"
 
 [project.optional-dependencies]
 test = [
